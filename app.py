@@ -15,18 +15,18 @@ from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.encoders import jsonable_encoder
-from langchain_anthropic import ChatAnthropic
-from langchain_mistralai import ChatMistralAI
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_ollama import ChatOllama
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from browser_use import ChatAnthropic
+from browser_use import ChatGoogle
+from browser_use import ChatOllama
+from browser_use import ChatAzureOpenAI, ChatOpenAI
 from pydantic import BaseModel, Field
 
 # This import will work once browser-use is installed
 # For development, you may need to add the browser-use repo to your PYTHONPATH
 from browser_use import Agent
 from browser_use.agent.views import AgentHistoryList
-from browser_use import BrowserConfig, Browser
+from browser_use import Browser
+
 
 # Define task status enum
 class TaskStatus(str, Enum):
@@ -116,14 +116,13 @@ def get_llm(ai_provider: str):
     """Get LLM based on provider"""
     if ai_provider == "anthropic":
         return ChatAnthropic(model=os.environ.get("ANTHROPIC_MODEL_ID", "claude-3-opus-20240229"))
-    elif ai_provider == "mistral":
-        return ChatMistralAI(model=os.environ.get("MISTRAL_MODEL_ID", "mistral-large-latest"))
     elif ai_provider == "google":
-        return ChatGoogleGenerativeAI(model=os.environ.get("GOOGLE_MODEL_ID", "gemini-1.5-pro"))
+        return ChatGoogle(model=os.environ.get("GOOGLE_MODEL_ID", "gemini-2.5-pro"))
     elif ai_provider == "ollama":
         return ChatOllama(model=os.environ.get("OLLAMA_MODEL_ID", "llama3"))
     elif ai_provider == "azure":
-        return AzureChatOpenAI(
+        # TODO I can't test this out of the box probably need additional work to support Azure
+        return ChatAzureOpenAI(
             azure_deployment=os.environ.get("AZURE_DEPLOYMENT_NAME"),
             openai_api_version=os.environ.get("AZURE_API_VERSION", "2023-05-15"),
             azure_endpoint=os.environ.get("AZURE_ENDPOINT")
@@ -134,6 +133,9 @@ def get_llm(ai_provider: str):
         if base_url:
             kwargs["base_url"] = base_url
         return ChatOpenAI(**kwargs)
+
+def getBrowser():
+    pass
 
 async def execute_task(task_id: str, instruction: str, ai_provider: str):
     """Execute browser task in background
@@ -149,7 +151,17 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
         
         # Get LLM
         llm = get_llm(ai_provider)
-        
+
+        # Configure agent options - start with basic configuration
+        agent_kwargs = {
+            "task": instruction,
+            "llm": llm,
+        }
+
+########################
+## Start of browser configuration code
+########################
+
         # Get task-specific browser configuration if available
         task_browser_config = tasks[task_id].get("browser_config", {})
         
@@ -158,6 +170,7 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
         if task_headful is not None:
             headful = task_headful
         else:
+            # TODO verify this works as expected
             headful = os.environ.get("BROWSER_USE_HEADFUL", "false").lower() == "true"
         
         # Get Chrome path and user data directory (task settings override env vars)
@@ -171,13 +184,7 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
             # Only use environment variables for Chrome paths
             chrome_path = os.environ.get("CHROME_PATH")
             chrome_user_data = os.environ.get("CHROME_USER_DATA")
-        
-        # Configure agent options - start with basic configuration
-        agent_kwargs = {
-            "task": instruction,
-            "llm": llm,
-        }
-        
+
         # Only configure and include browser if we need a custom browser setup
         if not headful or chrome_path:
             extra_chromium_args = []
@@ -189,19 +196,35 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
             extra_chromium_args += ["--headless=new"]
             logger.info(f"Task {task_id}: Browser config args: {browser_config_args.get('headless')}")
             # Add Chrome executable path if provided
-            if chrome_path:
-                browser_config_args["chrome_instance_path"] = chrome_path
-                logger.info(f"Task {task_id}: Using custom Chrome executable: {chrome_path}")
-                
+            # commented as seems no longer supported
+            # if chrome_path:
+            #     browser_config_args["chrome_instance_path"] = chrome_path
+            #     logger.info(f"Task {task_id}: Using custom Chrome executable: {chrome_path}")
+
             
             # Add Chrome user data directory if provided
             if chrome_user_data:
                 extra_chromium_args += [f"--user-data-dir={chrome_user_data}"]
                 logger.info(f"Task {task_id}: Using Chrome user data directory: {chrome_user_data}")
+
+            # browser_config = BrowserConfig(**browser_config_args)
+            # browser = Browser(config=browser_config)
+            browser = Browser(**browser_config_args)
+
+            # browser_config_args["extra_chromium_args"] = extra_chromium_args
+            # logger.info(f"Task {task_id}: Browser config args: {browser_config_args}")
+
+            # # Add Chrome executable path if provided
+            # if chrome_path:
+            #     browser_config_args["chrome_instance_path"] = chrome_path
+            #     logger.info(f"Task {task_id}: Using custom Chrome executable: {chrome_path}")
             
-            browser_config = BrowserConfig(**browser_config_args)
-            browser = Browser(config=browser_config)
-            
+            # browser = Browser(**browser_config_args)
+
+########################
+## end of browser configuration code
+########################
+
             # Add browser to agent kwargs
             agent_kwargs["browser"] = browser
         
