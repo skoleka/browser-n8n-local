@@ -96,10 +96,12 @@ tasks: Dict[str, Dict] = {}
 # Models
 class TaskRequest(BaseModel):
     task: str
-    ai_provider: Optional[str] = "openai"  # Default to OpenAI
+    ai_provider: Optional[str] = "google"  # Default to OpenAI
     save_browser_data: Optional[bool] = False  # Whether to save browser cookies
     headful: Optional[bool] = None  # Override BROWSER_USE_HEADFUL setting
     use_custom_chrome: Optional[bool] = None  # Whether to use custom Chrome from env vars
+    profile_directory: Optional[str] = "Default"  # Future use - specify browser profile
+    custom_browser_configuration: Optional[Dict] = None  # Additional browser config options
 
 class TaskResponse(BaseModel):
     id: str
@@ -117,7 +119,7 @@ def get_llm(ai_provider: str):
     if ai_provider == "anthropic":
         return ChatAnthropic(model=os.environ.get("ANTHROPIC_MODEL_ID", "claude-3-opus-20240229"))
     elif ai_provider == "google":
-        return ChatGoogle(model=os.environ.get("GOOGLE_MODEL_ID", "gemini-2.5-pro"))
+        return ChatGoogle(model=os.environ.get("GOOGLE_MODEL_ID", "gemini-2.5-flash"))
     elif ai_provider == "ollama":
         return ChatOllama(model=os.environ.get("OLLAMA_MODEL_ID", "llama3"))
     elif ai_provider == "azure":
@@ -185,6 +187,8 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
             chrome_path = os.environ.get("CHROME_PATH")
             chrome_user_data = os.environ.get("CHROME_USER_DATA")
 
+        profile_directory = task_browser_config.get("profile_directory", "Default")
+
         # Only configure and include browser if we need a custom browser setup
         if not headful or chrome_path:
             extra_chromium_args = []
@@ -192,34 +196,22 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
             browser_config_args = {
                 "headless": not headful,
             }
-            # For older Chrome versions
-            extra_chromium_args += ["--headless=new"]
-            logger.info(f"Task {task_id}: Browser config args: {browser_config_args.get('headless')}")
             # Add Chrome executable path if provided
-            # commented as seems no longer supported
-            # if chrome_path:
-            #     browser_config_args["chrome_instance_path"] = chrome_path
-            #     logger.info(f"Task {task_id}: Using custom Chrome executable: {chrome_path}")
+            if chrome_path:
+                browser_config_args["executable_path"] = chrome_path
+                logger.info(f"Task {task_id}: Using custom Chrome executable: {chrome_path}")
 
-            
             # Add Chrome user data directory if provided
             if chrome_user_data:
-                extra_chromium_args += [f"--user-data-dir={chrome_user_data}"]
-                logger.info(f"Task {task_id}: Using Chrome user data directory: {chrome_user_data}")
+                browser_config_args["user_data_dir"] = chrome_user_data
+                logger.info(f"Task {task_id}: Using Chrome user data directory: {chrome_user_data} and profile: {profile_directory}")
 
-            # browser_config = BrowserConfig(**browser_config_args)
-            # browser = Browser(config=browser_config)
+            # Add Profile directory if provided
+            if profile_directory:
+                browser_config_args["profile_directory"] = profile_directory
+                logger.info(f"Task {task_id}: Using Chrome profile directory: {profile_directory}")
+
             browser = Browser(**browser_config_args)
-
-            # browser_config_args["extra_chromium_args"] = extra_chromium_args
-            # logger.info(f"Task {task_id}: Browser config args: {browser_config_args}")
-
-            # # Add Chrome executable path if provided
-            # if chrome_path:
-            #     browser_config_args["chrome_instance_path"] = chrome_path
-            #     logger.info(f"Task {task_id}: Using custom Chrome executable: {chrome_path}")
-            
-            # browser = Browser(**browser_config_args)
 
 ########################
 ## end of browser configuration code
@@ -302,6 +294,7 @@ async def execute_task(task_id: str, instruction: str, ai_provider: str):
         if browser is not None:
             logger.info(f"Closing browser for task {task_id}")
             try:
+                # TODO AttributeError: 'BrowserSession' object has no attribute 'close'
                 await browser.close()
                 logger.info(f"Browser closed successfully for task {task_id}")
             except Exception as e:
@@ -332,6 +325,8 @@ async def run_task(request: TaskRequest):
         "browser_config": {
             "headful": request.headful,
             "use_custom_chrome": request.use_custom_chrome,
+            "profile_directory": request.profile_directory,
+            "custom_options": request.custom_browser_configuration or {}
         }
     }
     

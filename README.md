@@ -115,7 +115,7 @@ You can configure the service by editing the `.env` file.  Available options are
 #### Google AI
 
 - `GOOGLE_API_KEY`: Your Google AI API key.
-- `GOOGLE_MODEL_ID`: The model to use (e.g., `gemini-1.5-pro`).
+- `GOOGLE_MODEL_ID`: The model to use (e.g., `gemini-2.5-flash`).
 
 #### Ollama
 

@@ -2,11 +2,13 @@ version: '3'
 
 services:
   browser-n8n-bridge:
+    platform: linux/amd64  # Force x86_64 to ensure better package compatibility
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "24006:8000"
+      - "5901:5901"  # VNC port for viewing Chrome inside Docker
     environment:
       # API Configuration
       - PORT=8000
@@ -20,13 +22,9 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_MODEL_ID=${ANTHROPIC_MODEL_ID:-claude-3-opus-20240229}
       
-      # MistralAI Configuration
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
-      - MISTRAL_MODEL_ID=${MISTRAL_MODEL_ID:-mistral-large-latest}
-      
       # Google AI Configuration
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - GOOGLE_MODEL_ID=${GOOGLE_MODEL_ID:-gemini-1.5-pro}
+      - GOOGLE_MODEL_ID=${GOOGLE_MODEL_ID:-gemini-2.5-flash}
       
       # Ollama Configuration
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://localhost:11434}
